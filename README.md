@@ -25,7 +25,6 @@ Application web full-stack développée avec **Python Flask**, implémentant un 
 ```bash
 git clone https://github.com/mano/Systeme_authentification_web_securise
 .git
-cd secure-auth-flask
 pip install -r requirements.txt4k
 python app.py
 
