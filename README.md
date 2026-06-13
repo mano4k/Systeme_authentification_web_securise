@@ -1,4 +1,8 @@
 # Syst-me-d-authentification-web-s-curis-
+
+
+Baccalauréat en informatique — UQAC | 2024
+github.com/mano4K/Systeme_authentification_web_securise
 Hachage des mots de passe avec bcrypt (sel aléatoire, jamais stockés en clair)
 
 
