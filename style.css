@@ -1,0 +1,5 @@
+
+MAX_ATTEMPTS = 3  # Nombre maximal de tentatives
+LOCKOUT_TIME = 300  # Temps de verrouillage en secondes (5 minutes)
+RETRY_DELAY = 30  # Temps d'attente entre les tentatives échouées en secondes
+SECRET_KEY = 'a3df7$g!Hf9Q@1JkLmn#xR!PoWq28Ty'  # Obligatoire pour Flask

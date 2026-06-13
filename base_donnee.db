@@ -1,0 +1,335 @@
+from flask import Flask, render_template, request,redirect, session, flash
+from datetime import datetime, timedelta
+from config import MAX_ATTEMPTS, LOCKOUT_TIME, RETRY_DELAY, SECRET_KEY
+import sqlite3
+import bcrypt
+import re
+
+app =Flask(__name__)
+
+app.secret_key = 'a3df7$g!Hf9Q@1JkLmn#xR!PoWq28Ty' #cle secret fixe
+
+
+# creation et connexion de base de donnee
+connectionEtab= sqlite3.connect('./base_donnee.db')
+curseur= connectionEtab.cursor()
+# creation table USERS
+curseur.execute(''' 
+        CREATE TABLE IF NOT EXISTS USERS (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            
+            name TEXT NOT NULL,
+            
+            prenom TEXT NOT NULL,
+            
+            email TEXT NOT NULL,
+            
+            
+            password_hash BLOB NOT NULL,
+            salt TEXT NOT NULL,
+            
+            role TEXT NOT NULL DEFAULT 'client 1',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )    
+                ''')
+# creation de table login_attempts gestion des etats de login 
+curseur.execute('''
+    CREATE TABLE IF NOT EXISTS login_attempts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_email TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_attempt_time DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+''')
+
+# super administrateur des role par defaut
+
+curseur.execute("SELECT COUNT(*) FROM USERS WHERE role = 'admin'")
+admin_count = curseur.fetchone()[0]
+if admin_count == 0:
+    salt = bcrypt.gensalt()
+    default_password = "admin123"
+    password_hash = bcrypt.hashpw(default_password.encode('utf-8'), salt)
+    curseur.execute('''
+        INSERT INTO USERS (name, prenom, email, password_hash, salt, role) 
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', ("Admin", "Super", "admin@syssecuriter.com", password_hash, salt, "admin"))
+connectionEtab.commit()
+connectionEtab.close()
+
+
+
+# Route vers la page de connexion ou login
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+
+
+# Route vers le page de d'inscription
+@app.route('/index1')
+def index1():
+    return render_template('index1.html')  # Rendre le template index1.html
+
+
+
+# Route vers la souvergarde des donnees dans BD
+@app.route('/submit', methods=['POST'])
+def save_user():
+    name=request.form['name']
+    prenom= request.form['prenom']
+    email = request.form['email']
+    
+    password = request.form['password']
+    # Filtrage des inputs du mot de passe Mot de passe invalide : au moins 8 caractères, alphanumérique, sans \" ou ()"
+    password_pattern = r'^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d!@#$%^&*]{8,}$'
+    if not re.match(password_pattern, password):
+        flash("Mot de passe invalide : au moins 8 caractères, alphanumérique, sans \" ou ()", "danger")
+        return redirect('/register')  
+    
+    # generation de salt pour le encrpytion du  password
+    salt = bcrypt.gensalt()
+    # utilitation de chiffrement bcrypt pour hash le password
+    password_hash = bcrypt.hashpw(password.encode('utf-8'), salt)
+    
+    connectionEtab= sqlite3.connect('./base_donnee.db')
+    curseur= connectionEtab.cursor()
+    curseur.execute("INSERT INTO USERS (name, prenom, email, password_hash, salt) VALUES (?, ?, ?, ?, ?)", (name, prenom, email, password_hash, salt))
+    connectionEtab.commit()
+    connectionEtab.close()
+    flash("Enregistrement utilisateur avec succes")
+    
+    return redirect('/index1')
+
+# gestion des event dans lhors de la connexion du users
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        email = request.form['email']
+        password = request.form['password']
+        #Filtrage des inputs du mot de passe Mot de passe invalide : au moins 8 caractères, alphanumérique, sans \" ou ()"
+        password_pattern = r'^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d!@#$%^&*]{8,}$'
+        if not re.match(password_pattern, password):
+            flash("Mot de passe invalide : au moins 8 caractères, alphanumérique, sans \" ou ()", "danger")
+            return redirect('/login')
+      
+
+        conn = sqlite3.connect('./base_donnee.db')
+        curseur = conn.cursor()
+        curseur.execute("SELECT attempts, last_attempt_time FROM login_attempts WHERE user_email = ?", (email,))
+        attempt_record = curseur.fetchone()
+        
+        if attempt_record:
+            attempts, last_attempt_time = attempt_record
+            last_attempt_time = datetime.strptime(last_attempt_time, '%Y-%m-%d %H:%M:%S')
+            
+            # compte le nombre attentation echouee
+            if attempts >= MAX_ATTEMPTS and (datetime.now() - last_attempt_time).total_seconds() < LOCKOUT_TIME:
+                flash("Compte verrouillé. Veuillez contacter l'administrateur.", "danger")
+                conn.close()
+                return redirect('/login')
+    
+             # temps 300 second imposer au users apres 3 essaie echec
+            if (datetime.now() - last_attempt_time).total_seconds() < RETRY_DELAY:
+                flash(f"Veuillez attendre {RETRY_DELAY} secondes avant de réessayer.", "danger")
+                conn.close()
+                return redirect('/login')
+            
+        curseur.execute("SELECT * FROM USERS WHERE email = ?", (email,))
+        user = curseur.fetchone()
+        # recupere le password dans la BD, compare avec celui que utilisteur a rentrez
+        if user:
+            stored_password_hash = user[4]
+            
+            if bcrypt.checkpw(password.encode('utf-8'), stored_password_hash):
+                session['user_id'] = user[0]  # Stocke l'ID utilisateur dans la session
+                session['user_name'] = user[1]  # Stocke le nom de l'utilisateur
+                session['user_role'] = user[6]  # Stocker le rôle
+                flash("Connexion réussie !", "success")
+                print(f"Rôle de l'utilisateur connecté : {user[6]}")
+                curseur.execute("DELETE FROM login_attempts WHERE user_email = ?", (email,))
+                
+                conn.commit()
+                conn.close()
+                # en fonction du role le user est redigirer vers la page predefinit
+                if user[6] == 'admin':
+                    return redirect('/admin')
+                elif user[6] == 'client 1':
+                    print(f"redirection succes : {user[2]}") 
+                    return redirect('/client_aff')    
+                elif user[6] == 'client 2':
+                    return redirect('/client_resid')  
+                return redirect('/dashboard')
+            flash("Mot de passe incorrect.", "danger")
+            
+              
+        if attempt_record:
+            curseur.execute("""
+                UPDATE login_attempts
+                SET attempts = attempts + 1, last_attempt_time = ?
+                WHERE user_email = ?
+            """, (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), email))
+        else:
+            curseur.execute("""
+                INSERT INTO login_attempts (user_email, attempts, last_attempt_time)
+                VALUES (?, ?, ?)
+            """, (email, 1, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+
+        conn.commit()
+        conn.close()
+    return render_template('index.html')
+
+
+
+
+@app.route('/admin', methods=['GET', 'POST'])
+def admin_dashboard():
+    
+    if 'user_role' not in session or session['user_role'] != 'admin':
+        flash("Accès non autorisé", "danger")
+        return redirect('/login')
+    
+    conn = sqlite3.connect('./base_donnee.db')
+    curseur = conn.cursor()
+    # Récupérer tous les utilisateurs
+    curseur.execute("SELECT id, name, prenom, email, role FROM USERS")
+    users = curseur.fetchall()
+
+    conn.close()
+
+    return render_template('admin.html', users=users)
+
+
+
+
+
+@app.route('/admin/assign-role', methods=['POST'])
+def assign_role():
+    user_id = request.form['user_id']  # ID de l'utilisateur à modifier
+    new_role = request.form.get(f"role_{user_id}")  # Nouveau rôle sélectionné pour cet utilisateur
+
+    if user_id and new_role:
+        conn = sqlite3.connect('./base_donnee.db')
+        curseur = conn.cursor()
+
+        # Mettre à jour le rôle dans la base de données
+        curseur.execute("UPDATE USERS SET role = ? WHERE id = ?", (new_role, user_id))
+        conn.commit()
+        conn.close()
+
+        flash(f"Le rôle de l'utilisateur {user_id} a été mis à jour avec succès.", "success")
+    else:
+        flash("Une erreur s'est produite. Veuillez réessayer.", "danger")
+    
+    return redirect('/admin')
+
+
+
+@app.route('/client_aff', methods=['GET'])
+def client1_dashboard():
+    if 'user_role' not in session or session['user_role'] != 'client 1':
+        flash("Accès non autorisé", "danger")
+        return redirect('/login')
+
+    conn = sqlite3.connect('./base_donnee.db')
+    curseur = conn.cursor()
+
+    # Récupérer les utilisateurs avec le rôle client1
+    curseur.execute("SELECT id, name, prenom, email, role FROM USERS WHERE role = 'client 1'")
+    users = curseur.fetchall()
+    conn.close()
+
+    return render_template('client_aff.html', users=users)
+
+
+
+@app.route('/client_resid', methods=['GET'])
+def client2_dashboard():
+    if 'user_role' not in session or session['user_role'] != 'client 2':
+        flash("Accès non autorisé", "danger")
+        return redirect('/login')
+
+    conn = sqlite3.connect('./base_donnee.db')
+    curseur = conn.cursor()
+
+    # Récupérer les utilisateurs avec le rôle client2
+    curseur.execute("SELECT id, name, prenom, email, role FROM USERS WHERE role = 'client 2'")
+    users = curseur.fetchall()
+    conn.close()
+
+    return render_template('client_resid.html', users=users)
+
+
+@app.route('/admin/reset-password', methods=['POST'])
+def reset_password():
+    user_email = request.form['user_email']
+    new_password = request.form['new_password']
+    
+    # Validation du mot de passe (même critère qu'à l'inscription)
+    password_pattern = r'^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d!@#$%^&*]{8,}$'
+    if not re.match(password_pattern, new_password):
+        flash("Mot de passe invalide : au moins 8 caractères, alphanumérique, sans \" ou ()", "danger")
+        return redirect('/admin')
+
+    # Générer un nouveau sel et hacher le mot de passe
+    salt = bcrypt.gensalt()
+    new_password_hash = bcrypt.hashpw(new_password.encode('utf-8'), salt)
+    
+    # Mettre à jour le mot de passe dans la base de données
+    conn = sqlite3.connect('./base_donnee.db')
+    curseur = conn.cursor()
+    curseur.execute("""
+        UPDATE USERS 
+        SET password_hash = ?, salt = ? 
+        WHERE email = ?
+    """, (new_password_hash, salt, user_email))
+    
+    conn.commit()
+    conn.close()
+
+    flash("Le mot de passe a été réinitialisé avec succès.", "success")
+    return redirect('/admin')
+
+
+
+@app.route('/dashboard')
+def dashboard():
+    if 'user_role' not in session or session['user_role'] not in ['admin', 'client 1', 'client 2']:
+        flash("Accès non autorisé", "danger")
+        return redirect('/login')
+    
+    # Logique du tableau de bord en fonction du rôle
+    return render_template('dashboard.html')
+
+
+
+
+
+
+
+
+
+@app.route('/admin/unblock', methods=['POST'])
+def unblock_user():
+    email = request.form['email']
+
+    conn = sqlite3.connect('./base_donnee.db')
+    curseur = conn.cursor()
+
+    # Supprimer les tentatives de l'utilisateur
+    curseur.execute("DELETE FROM login_attempts WHERE user_email = ?", (email,))
+    conn.commit()
+    conn.close()
+
+    flash(f"L'utilisateur {email} a été débloqué.", "success")
+    return redirect('deblocage.html')
+
+
+
+
+if __name__=='__main__':
+    
+    app.run(host="127.0.0.1", port=5000, debug=True)
+   
+
+   

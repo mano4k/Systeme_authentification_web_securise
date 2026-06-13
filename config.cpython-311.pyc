@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tableau de bord</title>
+</head>
+<body>
+
+    <h1>Bienvenue, {{ session['user_name'] }} !</h1>
+    
+    <p>Rôle actuel : {{ session['user_role'] }}</p>
+
+    <!-- Contenu spécifique à l'admin -->
+    {% if session['user_role'] == 'admin' %}
+        <h2>Interface administrateur</h2>
+        <p>Vous êtes l'administrateur du système.</p>
+        <ul>
+            <li><a href="{{ url_for('admin') }}">Gérer les utilisateurs</a></li>
+            <li><a href="{{ url_for('view_users') }}">Voir les utilisateurs</a></li>
+        </ul>
+    {% endif %}
+    
+    <!-- Contenu spécifique au client 1 -->
+    {% if session['user_role'] == 'client 1' %}
+        <h2>Tableau de bord Client 1</h2>
+        <p>Bienvenue dans votre espace, Client 1.</p>
+        <!-- Contenu spécifique à client 1 -->
+        <ul>
+            <li><a href="#">Voir vos informations</a></li>
+            <li><a href="#">Gérer votre compte</a></li>
+        </ul>
+    {% endif %}
+    
+    <!-- Contenu spécifique au client 2 -->
+    {% if session['user_role'] == 'client 2' %}
+        <h2>Tableau de bord Client 2</h2>
+        <p>Bienvenue dans votre espace, Client 2.</p>
+        <!-- Contenu spécifique à client 2 -->
+        <ul>
+            <li><a href="#">Voir vos informations</a></li>
+            <li><a href="#">Gérer votre compte</a></li>
+        </ul>
+    {% endif %}
+
+    <br>
+    <a href="{{ url_for('logout') }}">Se déconnecter</a>
+
+</body>
+</html>

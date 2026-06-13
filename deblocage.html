@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administration</title>
+    <style>
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+        th {
+            background-color: #f4f4f4;
+            text-align: left;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Administration</h1>
+    <h3>Gérer les rôles des utilisateurs</h3>
+    
+    <form action="{{ url_for('assign_role') }}" method="post">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nom</th>
+                    <th>Prénom</th>
+                    <th>Email</th>
+                 
+                    <th>Nouveau rôle</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>{{ user[0] }}</td>
+                    <td>{{ user[1] }}</td>
+                    <td>{{ user[2] }}</td>
+                    <td>{{ user[3] }}</td>
+                    <td>{{ user[4] }}</td>
+                    <td>
+                        <select name="role_{{ user[0] }}">
+                            <option value="admin" {% if user[4] == 'admin' %}selected{% endif %}>Admin</option>
+                            <option value="client 1" {% if user[4] == 'client 1' %}selected{% endif %}>Client 1</option>
+                            <option value="client 2" {% if user[4] == 'client 2' %}selected{% endif %}>Client 2</option>
+                        </select>
+                    </td>
+                    <td>
+                        <button type="submit" name="user_id" value="{{ user[0] }}">Mettre à jour</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </form>
+
+
+    <form method="POST" action="/admin/reset-password">
+        <label for="user_email">Choisir un utilisateur :</label>
+        <select name="user_email" required>
+          {% for user in users %}
+            <option value="{{ user[3] }}">{{ user[1] }} {{ user[2] }} ({{ user[3] }})</option>
+          {% endfor %}
+        </select>
+      
+        <label for="new_password">Nouveau mot de passe :</label>
+        <input type="password" name="new_password" required>
+      
+        <button type="submit">Réinitialiser le mot de passe</button>
+      </form>
+      
+    {% with messages = get_flashed_messages(with_categories=True) %}
+    {% if messages %}
+        {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+    {% endwith %}
+</body>
+</html>
+

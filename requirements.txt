@@ -1,0 +1,4 @@
+.large{
+    width: 500px;
+    border-color: aquamarine;    
+}
